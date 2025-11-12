@@ -1,7 +1,7 @@
 /* 
  * CS:APP Data Lab 
  * 
- * <Please put your name and userid here>
+ * @xllzi
  * 
  * bits.c - Source file with your solutions to the Lab.
  *          This is the file you will hand in to your instructor.
@@ -143,18 +143,17 @@ NOTES:
  *   Rating: 1
  */
 int bitXor(int x, int y) {
-  return 2;
+  return (~((~x)&(~y))&(~(x&y)));
 }
 /* 
  * tmin - return minimum two's complement integer 
  *   Legal ops: ! ~ & ^ | + << >>
  *   Max ops: 4
  *   Rating: 1
+ *   Tmin即除了MSB为1，其余位都为0
  */
-int tmin(void) {
-
-  return 2;
-
+int tmin(void) {    
+  return 1 << 31;
 }
 //2
 /*
@@ -163,9 +162,12 @@ int tmin(void) {
  *   Legal ops: ! ~ & ^ | +
  *   Max ops: 10
  *   Rating: 1
+ *   在计算一个Tmax的后，实现运算`==`
+ *   Tmax即除了MSB为0，其余位都为1
+ *   在不使用移位的情况下运算次数最大只有10次的情况下，构造Tmax似乎不可能
  */
 int isTmax(int x) {
-  return 2;
+  return !(x ^ (~(1 << 31)));
 }
 /* 
  * allOddBits - return 1 if all odd-numbered bits in word set to 1
@@ -174,9 +176,11 @@ int isTmax(int x) {
  *   Legal ops: ! ~ & ^ | + << >>
  *   Max ops: 12
  *   Rating: 2
+ *   mask even-numbered bits because it is not important
+ *   and then compared to 0xAAAAAAAA
  */
 int allOddBits(int x) {
-  return 2;
+  return !((x & 0xAA) ^ 0xAA) & !((x >> 8 & 0xAA) ^ 0xAA) & !((x >> 16 & 0xAA) ^ 0xAA) & !((x >> 24 & 0xAA) ^ 0xAA);
 }
 /* 
  * negate - return -x 
@@ -184,9 +188,11 @@ int allOddBits(int x) {
  *   Legal ops: ! ~ & ^ | + << >>
  *   Max ops: 5
  *   Rating: 2
+ *   two's complement 的整数在数轴上是排除Tmin基础上对称的
+ *   所以只要取反再右移1就能找到相反数
  */
 int negate(int x) {
-  return 2;
+  return (~x) + 1;
 }
 //3
 /* 
@@ -197,9 +203,11 @@ int negate(int x) {
  *   Legal ops: ! ~ & ^ | + << >>
  *   Max ops: 15
  *   Rating: 3
+ *   在不实现<=运算符的前提下
+ *   判断一个数是否在一个区间内可以分解为对hexadecimal的每一位的大小的判断
  */
 int isAsciiDigit(int x) {
-  return 2;
+  return !(x & (~0xFF)) & !((x & 0xF0) ^ 0x30) & !(((x & 0xF) + 6) & 0x10);
 }
 /* 
  * conditional - same as x ? y : z 
@@ -207,9 +215,19 @@ int isAsciiDigit(int x) {
  *   Legal ops: ! ~ & ^ | + << >>
  *   Max ops: 16
  *   Rating: 3
+ *   我要计算中保留y和z的原值
+ *   y & -1 = y
+ *   y & 0 = 0
+ *   若x = 1, y & -x = y, z & -(!x) = 0
+ *   两者和即为y
+ *   若x = 0, y & -x = 0, z & -(!x) = z
+ *   两者和即为z
+ *   唯一的问题是我需要映射x为0或-1
  */
 int conditional(int x, int y, int z) {
-  return 2;
+  // 根据x的真假来确定mask的值（-1或0）
+  // 若x为非0数，!!x = 1, !x = 0
+  return (y & (~!!x + 1)) + (z & (~!x + 1));
 }
 /* 
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -217,9 +235,12 @@ int conditional(int x, int y, int z) {
  *   Legal ops: ! ~ & ^ | + << >>
  *   Max ops: 24
  *   Rating: 3
+ *   实现<=运算
+ *   x <= y 等价于 y - x >= 0
+ *   x >= 0 等价于x的MSB为0
  */
 int isLessOrEqual(int x, int y) {
-  return 2;
+  return !((y + (~x + 1)) & (1 << 31));
 }
 //4
 /* 
@@ -229,9 +250,26 @@ int isLessOrEqual(int x, int y) {
  *   Legal ops: ~ & ^ | + << >>
  *   Max ops: 12
  *   Rating: 4 
+ *   若x至少有一位1,则返回0
+ *   若x为0,则返回1
+ *   这两者是互补的
+ *   简单的判断应是判断x是否为0
+ *   0的性质：0的相反数仍是0
+ *   而Tmin即0x80000000的相反数也仍是本身
+ *   前者是向上溢出，后者是two's complement的wrap around
+ *   所以不能使用该性质来判断一个数是否为0
+ *
+ *   问题是：~x + 1 ^ x 得到的值与目标值是相反的
+ *   对于非0数x, 返回值又是不稳定的
+ *   而我要得到目标值却恰好需要`!`——我需要实现的运算
+ *   关键不是判断一个数是否为0, 而是映射一个非0数为1
+ *
+ *   对于任何非零的 x，x 或上 -x 的最高位必有一个为 1
  */
 int logicalNeg(int x) {
-  return 2;
+  int negX = ~x + 1;
+  int sign = (x | negX) >> 31;
+  return sign + 1;
 }
 /* howManyBits - return the minimum number of bits required to represent x in
  *             two's complement
