@@ -43,7 +43,7 @@ static int get_num_val(char *sval, unsigned *valp) {
 
 void show_int(unsigned uf)
 {
-  printf("Hex = 0x%.8x,\tSigned = %d,\tUnsigned = %u\n",
+  printf("Hex = 0x%.8x, \tBin = 0b%b, \tSigned = %d,\tUnsigned = %u\n",
 	 uf, (int) uf, uf);
 }
 
