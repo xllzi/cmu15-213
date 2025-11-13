@@ -282,9 +282,59 @@ int logicalNeg(int x) {
  *  Legal ops: ! ~ & ^ | + << >>
  *  Max ops: 90
  *  Rating: 4
+ *  在转换decimal为binary时，我们使用除余法
+ *  逐渐mod 2，得到每一位，最后加上符号位
+ *  问题是没有循环，不能模拟这个计算过程
+ *
+ *  参数x在底层就是以32-bits的形式表示的
+ *  只需要从最高位开始排除多余的1或0即可得到最少位
+ *  若x >= 0, 右移n位，x为0, 则最少位=n+1
+ *  若x < 0, 右移n位，x为-1, 则最少位=n+1
+ *  所以以x是否为非负数为条件，分别返回两个值
+ *
+ *  问题是：没有循环怎么找到n?
+ *  计数所有满足条件!(rshiftb ^ check_value) == 1的变量
+ *  假设从rshiftb开始，以下所有变量都满足条件，则数量为32 - b, 应返回b+1, 即32 - (32 - b) + 1
  */
 int howManyBits(int x) {
-  return 0;
+  int is_not_neg = !(x & (1 << 31));
+  // 若是非负值，即is_not_neg = 1，check_value = 0
+  // 反之, is_not_neg = 0, check_value = -1
+  int check_value = is_not_neg + (~1 + 1);
+  int cnt = !(x >> 0 ^ check_value) + 
+            !(x >> 1 ^ check_value) + 
+            !(x >> 2 ^ check_value) + 
+            !(x >> 3 ^ check_value) +
+            !(x >> 4 ^ check_value) +
+            !(x >> 5 ^ check_value) +
+            !(x >> 6 ^ check_value) +
+            !(x >> 7 ^ check_value) +
+            !(x >> 8 ^ check_value) +
+            !(x >> 9 ^ check_value) +
+            !(x >> 10 ^ check_value) +
+            !(x >> 11 ^ check_value) +
+            !(x >> 12 ^ check_value) +
+            !(x >> 13 ^ check_value) +
+            !(x >> 14 ^ check_value) +
+            !(x >> 15 ^ check_value) +
+            !(x >> 16 ^ check_value) +
+            !(x >> 17 ^ check_value) +
+            !(x >> 18 ^ check_value) +
+            !(x >> 19 ^ check_value) +
+            !(x >> 20 ^ check_value) +
+            !(x >> 21 ^ check_value) +
+            !(x >> 22 ^ check_value) +
+            !(x >> 23 ^ check_value) +
+            !(x >> 24 ^ check_value) +
+            !(x >> 25 ^ check_value) +
+            !(x >> 26 ^ check_value) +
+            !(x >> 27 ^ check_value) +
+            !(x >> 28 ^ check_value) +
+            !(x >> 29 ^ check_value) +
+            !(x >> 30 ^ check_value) +
+            !(x >> 31 ^ check_value);
+  int minbits = 32 + (~cnt + 1) + 1;
+  return minbits;
 }
 //float
 /* 
