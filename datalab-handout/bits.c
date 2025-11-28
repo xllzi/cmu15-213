@@ -238,9 +238,20 @@ int conditional(int x, int y, int z) {
  *   实现<=运算
  *   x <= y 等价于 y - x >= 0
  *   x >= 0 等价于x的MSB为0
+ *   但是整数溢出会导致极端值不满足这一数学性质
+ *   应该进一步根据符号来判断大小
  */
 int isLessOrEqual(int x, int y) {
-  return !((y + (~x + 1)) & (1 << 31));
+    int x_sign = (x >> 31) & 1;  // x的符号
+    int y_sign = (y >> 31) & 1;  // y的符号
+
+    int diff_sign = x_sign ^ y_sign; // x y符号是否不同
+    int diff = y + (~x + 1);         // y - x
+    int diff_msb = (diff >> 31) & 1; // y - x 的符号位
+
+    // 符号不同且 x 负 → x <= y
+    // 符号相同且 y-x >=0 → x <= y
+    return (diff_sign & x_sign) | (!diff_sign & !diff_msb);
 }
 //4
 /* 
@@ -347,9 +358,26 @@ int howManyBits(int x) {
  *   Legal ops: Any integer/unsigned operations incl. ||, &&. also if, while
  *   Max ops: 30
  *   Rating: 4
+ *   对于exp != 0 && exp != 0xFF的情况，exp++就可以使得value * 2
+ *   若exp == 0xFF - 0x1, 将frac清零即可表示向上溢出，返回inf, 即uf &= 0b11111111100000000000000000000000
+ *   若exp == 0xFF, 不做任何事，inf * 2 == inf
+ *   若exp == 0, 
+ *      若frac << 1不溢出，即第23位不是1，那么frac << 1即可
+ *      若第23位是1, 直接左移，结果normalized，数值是符合预期的算术结果的
  */
 unsigned floatScale2(unsigned uf) {
-  return 2;
+  unsigned exp = uf >> 23 & 0xFF;
+  unsigned frac = uf & 0xFFFFFF; // 包含第24位
+  if (exp == 0xFF) {
+      // for either uf is Nah or inf, return itself
+  } else if (exp == 0) {
+      uf = (uf & 0xFF000000) + (frac << 1);
+  } else if (exp == 0xFF - 1) {
+      uf = (uf + 0x800000) & 0xff800000;
+  } else {
+      uf += 0x800000;
+  }
+  return uf;
 }
 /* 
  * floatFloat2Int - Return bit-level equivalent of expression (int) f
@@ -362,9 +390,46 @@ unsigned floatScale2(unsigned uf) {
  *   Legal ops: Any integer/unsigned operations incl. ||, &&. also if, while
  *   Max ops: 30
  *   Rating: 4
+ *   若exp == 0, 则返回0
+ *   若exp == 0xFF, 则返回0x80000000u
+ *   在frac == 0的情况下，uf仍可能有小数，当E < 0时
+ *   当E > 31, 返回INT_MIN
+ *
+ *   当frac != 0, 浮点数仍有可能不为小数
+ *   所以总是舍弃frac是不合理的
+ *   我应该考虑的是在将 1.frac 左移 exp-bias 位后，小数部分必须正好对齐到整数边界，不留下任何“非零的右边位”
+ *   若frac左移exp-bias位后为0，那么浮点数恰好表示整数
+ *   若不为0, 此时的frac表示的小数应被舍去, 那么未被舍去的小数应该被加上
+ *   也就是加上从左至右exp-bias位的frac，使用unsigned加法
  */
 int floatFloat2Int(unsigned uf) {
-  return 2;
+  unsigned sign = uf >> 31;
+  unsigned exp = uf >> 23 & 0xFF;
+  unsigned frac = uf & (0xFFFFFFu >> 1);
+  if (exp == 0) return 0;
+  else if (exp == 0xFF) return 0x80000000u;
+  else {
+      int shift = (exp - (0x80 - 1));
+      if (shift < 0) {
+          return 0;
+      } else if (shift >= 31) {
+          return 0x80000000u;
+      } else {
+          // frac will be interpreted as unsigned prepend a 1
+          // there is a conceptual floating point between the bits
+          // mask frac according to the position of floating point
+          frac += 1 << 23;
+          if (shift < 23) {
+              // mask low 23 - shift of frac
+              frac = frac >> (23-shift);
+              return (frac ^ (0u - sign)) + sign;
+          } else {
+              // 没有小数
+              unsigned E = shift - 23;
+              return (frac ^ (0u - sign)) + sign;
+          }
+      }
+  }
 }
 /* 
  * floatPower2 - Return bit-level equivalent of the expression 2.0^x
