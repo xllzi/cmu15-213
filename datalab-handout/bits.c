@@ -425,7 +425,6 @@ int floatFloat2Int(unsigned uf) {
               return (frac ^ (0u - sign)) + sign;
           } else {
               // 没有小数
-              unsigned E = shift - 23;
               return (frac ^ (0u - sign)) + sign;
           }
       }
@@ -443,7 +442,29 @@ int floatFloat2Int(unsigned uf) {
  *   Legal ops: Any integer/unsigned operations incl. ||, &&. Also if, while 
  *   Max ops: 30 
  *   Rating: 4
+ *   如何将1 << x 转换成 1.frac << E
+ *   一个binary表示与整数一一对应
+ *   若frac不为0，不存在x使得1 << x = 1.frac << E
+ *   所以能计算的最大2的幂为1 << 127
+ *
+ *   对于负指数
+ *   能计算的最小2的幂为1 >> -(127 + 23)
+ *   norm: when -126 <= x <= 127
+ *   denorm: when -127 >= x >= -149
  */
 unsigned floatPower2(int x) {
-    return 2;
+    if (x > 127) return 0x7f800000u;
+    else if (x < -149) return 0;
+    else if (x >= -126) {
+        // normalized
+        unsigned exp = (x + (0x80 - 1)) << 23;
+        // frac = 0
+        return exp;
+    } else {
+        // x <= -127
+        // denormalized
+        // exp = 0, E = -126
+        unsigned frac = 0x00800000u >> (-126 - x);
+        return frac;
+    }
 }
