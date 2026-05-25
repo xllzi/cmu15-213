@@ -1,8 +1,7 @@
-br se -n phase_4
-br se -n phase_5
-br se -n func4
+br se -n phase_6
 br se -n explode_bomb
-target stop-hook add
-re re edx esi edi ecx eax
-DONE
 run
+br se -a 0x401123
+br se -a 0x401140
+br se -a 0x4011e9
+br se -a 0x4011da

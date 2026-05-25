@@ -70,7 +70,6 @@ string_length(0x402400) = 0x34
 参数`%rsi`的值是`%rsp`stack底部的地址`0x00007fffffffd870`  
 若返回值不为1, explode
 ```
-%rsp = 0x00007fffffffd850
 %rdx = 0x00007fffffffd870  (%rdx) = 0xe8
 %rcx = 0x00007fffffffd874  (%rcx) = 0xff
 %rax = 0x00007fffffffd884  (%rax) = 0xff
@@ -194,3 +193,101 @@ phase_4 pass
 输入的第二数必须为0  
 因为返回值必须为0，所以不能右转，最后得到的数才能是0  
 所以在中间值7左分支的节点的值都能通过  
+
+## 函数`phase_5`
+检查input的长是否=6，若不相等，则explode  
+将input迭代6次  
+过程：  
+```
+for (int i = 6; i < 6; i++) {
+	取input[i]的下4位(half byte)作为索引j
+	char* Astr = 0x4024b0
+	char* Bstr = 0x00007fffffffd890
+	Bstr[i] = Astr[j]
+	char* Cstr = 0x40245e
+}
+```
+```
+if string_not_equal(Bstr, Cstr) {
+	explode
+}
+```
+
+关键地址  
+`0x4024b0`: `maduiersnfotvbyl`
+`0x40245e`: `flyers`
+`0x00007fffffffd890`: store a local string
+
+### 逆向构造`input`
+```
+Astr:
+maduiersnfotvbyl
+Cstr/Bstr:
+flyers
+j:
+9 15 14 5 6 7
+9 f e 5 6 7
+input: 
+ionefg
+```
+
+## 函数`phase_6`
+```
+rbp = rsp = input[0]
+```
+```
+从input读取6个整数写入(%rsp) = 0x00007fffffffd830
+
+
+for (i = 0; i < 6; i++)
+	if (input[i]-1 > 0x5) explode
+	for (j = i; j <= 5; j++) 
+		if (input[j+1] == input[i]) explode
+		
+
+```
+
+6个正整数不能大于6且互不相同，input是`{1 2 3 4 5 6}`的一种排列
+
+```
+for (int i = 0; i < 6; i++)
+	input[i] = 7 - input[i]
+1 2 3 4 5 6 -> 6 5 4 3 2 1
+
+note = 0x6032d0
+迭代6次 node = node->next
+
+memcopy(node, 0x7fffffffd850, 6*8)
+```
+
+```
+node: 603320 603310 603300 6032f0 6032e0 6032d0
+```
+
+```
+(lldb) me read -c 96 0x00000000006032d0
+0x006032d0: 4c 01 00 00 01 00 00 00 00 00 00 00 00 00 00 00 
+0x006032e0: a8 00 00 00 02 00 00 00 d0 32 60 00 00 00 00 00 
+0x006032f0: 9c 03 00 00 03 00 00 00 e0 32 60 00 00 00 00 00 
+0x00603300: b3 02 00 00 04 00 00 00 f0 32 60 00 00 00 00 00 
+0x00603310: dd 01 00 00 05 00 00 00 00 33 60 00 00 00 00 00 
+0x00603320: bb 01 00 00 06 00 00 00 10 33 60 00 00 00 00 00 
+```
+在内存中node结构所含有的数据是不变的，在内存上的地址也是不变的
+> [!note] 猜测
+> 输入的整数序列决定链表中nodes的连接即nodes的排序
+
+```
+3 5 1 4 2 6 -> 4 2 6 3 5 1
+node: 4->2->6
+```
+
+```
+检查node序列按照node.value从大到小排列
+```
+
+### 逆向构造
+```
+node: 3->4->5->6->1->2
+4 3 2 1 6 5
+```
