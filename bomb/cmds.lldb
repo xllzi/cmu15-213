@@ -1,7 +1,4 @@
-br se -n phase_6
+br se -n phase_1
 br se -n explode_bomb
 run
-br se -a 0x401123
-br se -a 0x401140
-br se -a 0x4011e9
-br se -a 0x4011da
+
