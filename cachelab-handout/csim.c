@@ -17,7 +17,7 @@
 uint32_t SET_INDEX_BITS;
 uint32_t LINES_PER_SET;
 uint32_t BLOCK_OFFSET_BITS;
-char* FILE_NAME;
+char* FILE_PATH;
 /*
  * cache organization:
  * cache is array of set
@@ -57,12 +57,12 @@ bool lookup(cache_set* cache, uint64_t addr) {
 char* access_cache(cache_set* cache, uint64_t addr, uint64_t *cache_hits, 
                   uint64_t *cache_misses, uint64_t *cache_evictions) {
     if (lookup(cache, addr)) {
-        cache_hits++;
+        (*cache_hits)++;
         return " hit";
     } else {
-        cache_misses++;
+        (*cache_misses)++;
         if (lookup(cache, addr)) {
-            cache_evictions++;
+            (*cache_evictions)++;
             return " miss eviction";
         } else {
             return " miss";
@@ -73,7 +73,7 @@ char* access_cache(cache_set* cache, uint64_t addr, uint64_t *cache_hits,
 int main(int argc, char *argv[])
 {
     int opt;
-    while ((opt = getopt(argc, argv, "s:E:b:t")) != -1) {
+    while ((opt = getopt(argc, argv, "s:E:b:t:")) != -1) {
         switch (opt) {
             case 's':
                 SET_INDEX_BITS = atoi(optarg);
@@ -85,10 +85,10 @@ int main(int argc, char *argv[])
                 BLOCK_OFFSET_BITS = atoi(optarg);
                 break;
             case 't':
-                FILE_NAME = optarg;
+                FILE_PATH = optarg;
                 break;
             case '?':
-                printf("Usage: ./csim [-hv] -s <num> -E <num> -b <num> -t <file>\n"
+                printf("Usage: ./csim -s <num> -E <num> -b <num> -t <file>\n"
                        "Options:\n"
                           "-s <num>   Number of set index bits.\n"
                           "E <num>   Number of lines per set.\n"
@@ -96,8 +96,7 @@ int main(int argc, char *argv[])
                           "-t <file>  Trace file.\n"
                        "\n"
                        "Examples:\n"
-                         "linux>  ./csim-ref -s 4 -E 1 -b 4 -t traces/yi.trace\n"
-                         "linux>  ./csim-ref -v -s 8 -E 2 -b 4 -t traces/yi.trace\n");
+                         "linux>  ./csim-ref -s 4 -E 1 -b 4 -t traces/yi.trace\n");
                 exit(1);
         }
     }
@@ -109,7 +108,7 @@ int main(int argc, char *argv[])
         cache[i] = malloc(LINES_PER_SET * sizeof(cache_line));
     }
 
-    FILE *fp = fopen(FILE_NAME, "r");
+    FILE *fp = fopen(FILE_PATH, "r");
     if (fp == NULL) {
         printf("open file fail\n");
         exit(1);
@@ -131,10 +130,10 @@ int main(int argc, char *argv[])
         uint64_t addr = strtoull(buf+3, NULL, 16);
         switch (buf[1]) {
             case 'M':
-                strcat(buf, access_cache(cache, addr, &cache_hits, &cache_evictions, &cache_evictions));
+                strcat(buf, access_cache(cache, addr, &cache_hits, &cache_misses, &cache_evictions));
             case 'L':
             case 'S':
-                strcat(buf, access_cache(cache, addr, &cache_hits, &cache_evictions, &cache_evictions));
+                strcat(buf, access_cache(cache, addr, &cache_hits, &cache_misses, &cache_evictions));
                 break;
         }
         printf("%s", strcat(buf, "\n"));
