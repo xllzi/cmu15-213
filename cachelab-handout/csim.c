@@ -80,7 +80,6 @@ char* access_cache(cache_set* cache, uint64_t addr, uint64_t *cache_hits,
     }
     // fetch data block from low-level cache
     // random replacement
-    srand(time(NULL));
     uint64_t n = rand() % LINES_PER_SET;
     cache_line *line = &set[n];
     line->tag = tag;
@@ -143,6 +142,7 @@ int main(int argc, char *argv[])
     uint64_t cache_hits = 0;
     uint64_t cache_misses = 0;
     uint64_t cache_evictions = 0;
+    srand(time(NULL));
     // 'L' and 'S' have no difference
     // 'M' does 2 memory reference
     while (fgets(buf, sizeof(buf), fp) != NULL) {
