@@ -147,6 +147,7 @@ int main(int argc, char *argv[])
     // 'M' does 2 memory reference
     while (fgets(buf, sizeof(buf), fp) != NULL) {
         if (buf[0] != ' ') continue;
+        buf[strcspn(buf, "\n")] = '\0';
         uint64_t addr = strtoull(buf+3, NULL, 16);
         switch (buf[1]) {
             case 'M':
@@ -156,7 +157,7 @@ int main(int argc, char *argv[])
                 strcat(buf, access_cache(cache, addr, &cache_hits, &cache_misses, &cache_evictions));
                 break;
         }
-        printf("%s", strcat(buf, "\n"));
+        printf("%s\n", buf+1);
     }
     printSummary(cache_hits, cache_misses, cache_evictions);
 
