@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <time.h>
 #include "cachelab.h"
 
 /* A cache simulator, take trace as input and output cache hits/misses/evictions 
@@ -36,37 +37,61 @@ typedef struct {
 } cache_line;
 typedef cache_line* cache_set;
 
-bool lookup(cache_set* cache, uint64_t addr) {
-    // extrac set index bits from addr
-    // [s+b, b)
+cache_set* init_cache() {
+    // dynamic allocate memory for cache
+    uint64_t num_sets = 1ULL << SET_INDEX_BITS;
+    cache_set *cache = malloc(num_sets * sizeof(cache_set));
+    for (uint64_t i = 0; i < num_sets; i++) {
+        cache[i] = malloc(LINES_PER_SET * sizeof(cache_line));
+        // initialize all valid_bit and tag
+        for (uint64_t j = 0; j < LINES_PER_SET; j++) {
+            cache[i][j] = (cache_line) {0, 0ULL-1};
+        }
+    }
+    return cache;
+}
+
+void free_cache(cache_set* cache) {
+    uint64_t num_sets = 1ULL << SET_INDEX_BITS;
+    for (uint64_t i = 0; i < num_sets; i++) {
+        free(cache[i]);
+    }
+    free(cache);
+}
+
+char* access_cache(cache_set* cache, uint64_t addr, uint64_t *cache_hits, 
+                  uint64_t *cache_misses, uint64_t *cache_evictions) {
     uint64_t set_index = (addr >> BLOCK_OFFSET_BITS) & ((1ULL << SET_INDEX_BITS) - 1);
     uint64_t tag = addr >> (BLOCK_OFFSET_BITS + SET_INDEX_BITS);
     cache_set set = cache[set_index];
     for (int i = 0; i < LINES_PER_SET; i++) {
         cache_line *line = &set[i];
         if (line->tag == tag) {
-            bool valid_bit = line->valid_bit;
-            // fetch data from low-level cache
-            line->valid_bit = true;
-            return valid_bit;
+            if (line->valid_bit) {
+                (*cache_hits)++;
+                return " hit";
+            } else {
+                (*cache_misses)++;
+                line->valid_bit = true;
+                line->tag = tag;
+                return " miss";
+            }
         }
     }
-    return false;
-}
-
-char* access_cache(cache_set* cache, uint64_t addr, uint64_t *cache_hits, 
-                  uint64_t *cache_misses, uint64_t *cache_evictions) {
-    if (lookup(cache, addr)) {
-        (*cache_hits)++;
-        return " hit";
+    // fetch data block from low-level cache
+    // random replacement
+    srand(time(NULL));
+    uint64_t n = rand() % LINES_PER_SET;
+    cache_line *line = &set[n];
+    line->tag = tag;
+    if (line->valid_bit) {
+        (*cache_misses)++;
+        (*cache_evictions)++;
+        return " miss eviciton";
     } else {
         (*cache_misses)++;
-        if (lookup(cache, addr)) {
-            (*cache_evictions)++;
-            return " miss eviction";
-        } else {
-            return " miss";
-        }
+        line->valid_bit = true;
+        return " miss";
     }
 }
 
@@ -101,12 +126,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    // dynamic allocate memory for cache
-    uint64_t num_sets = 1ULL << SET_INDEX_BITS;
-    cache_set *cache = malloc(num_sets * sizeof(cache_set));
-    for (uint64_t i = 0; i < num_sets; i++) {
-        cache[i] = malloc(LINES_PER_SET * sizeof(cache_line));
-    }
+    cache_set* cache = init_cache();
 
     FILE *fp = fopen(FILE_PATH, "r");
     if (fp == NULL) {
@@ -141,5 +161,6 @@ int main(int argc, char *argv[])
     printSummary(cache_hits, cache_misses, cache_evictions);
 
     fclose(fp);
+    free(cache);
     return 0;
 }
