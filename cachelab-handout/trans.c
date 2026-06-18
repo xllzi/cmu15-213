@@ -11,6 +11,7 @@
 #include "cachelab.h"
 
 int is_transpose(int M, int N, int A[N][M], int B[M][N]);
+void trans_block(int M, int N, int A[N][M], int B[M][N]);
 
 /* 
  * transpose_submit - This is the solution transpose function that you
@@ -22,6 +23,7 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 char transpose_submit_desc[] = "Transpose submission";
 void transpose_submit(int M, int N, int A[N][M], int B[M][N])
 {
+    trans_block(M, N, A, B);
 }
 
 /* 
@@ -46,6 +48,32 @@ void trans(int M, int N, int A[N][M], int B[M][N])
 
 }
 
+char trans_block_desc[] = "4x4 block partition with register buffering";
+void trans_block(int M, int N, int A[N][M], int B[M][N]) {
+    int ii, jj, i, j;
+    int t0, t1, t2, t3;
+
+    for (ii = 0; ii < N; ii += 4) {
+        for (jj = 0; jj < M; jj += 4) {
+            for (i = ii; i < N && i < ii + 4; i++) {
+                if (jj + 3 < M) {
+
+                    t0 = A[i][jj];
+                    t1 = A[i][jj+1];
+                    t2 = A[i][jj+2];
+                    t3 = A[i][jj+3];
+                    B[jj][i]   = t0;
+                    B[jj+1][i] = t1;
+                    B[jj+2][i] = t2;
+                    B[jj+3][i] = t3;
+                } else {
+                    for (j = jj; j < M; j++)
+                        B[j][i] = A[i][j];
+                }
+            }
+        }
+    }
+}
 /*
  * registerFunctions - This function registers your transpose
  *     functions with the driver.  At runtime, the driver will
@@ -60,6 +88,7 @@ void registerFunctions()
 
     /* Register any additional transpose functions */
     registerTransFunction(trans, trans_desc); 
+    registerTransFunction(trans_block, trans_block_desc);
 
 }
 
