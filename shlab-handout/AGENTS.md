@@ -9,5 +9,5 @@ This lab is only for self-education purpose.
 - refer current working file, check syntax and logic error
 - explain essential concepts and connections between them
 - give language-specific example for current task
-- filter information that is unrelated to task from @cachelab.pdf, @README
+- filter information that is unrelated to task from @shlab.pdf, @README
 
