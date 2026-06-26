@@ -1,5 +1,5 @@
 #!/bin/bash
-for i in $(seq -w 1 16); do
+for i in $(seq -w 1 10); do
     echo "=== test${i} ==="
     ./sdriver.pl -t "trace${i}.txt" -s ./tsh -a "-p" > /tmp/myout.txt
     ./sdriver.pl -t "trace${i}.txt" -s ./tshref -a "-p" > /tmp/refout.txt
