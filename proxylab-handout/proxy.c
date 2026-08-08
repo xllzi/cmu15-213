@@ -2,20 +2,25 @@
 #include <string.h>
 #include <strings.h>
 #include "csapp.h"
+#include "sbuf.h"
 
 /* Recommended max cache and object sizes */
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
+#define NTHREADS 8
+#define SBUFSIZE 8
 
 /* You won't lose style points for including this long line in your code */
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
+sbuf_t sbuf; // shared buffer of connected fd
 
 void handleHTTPreq(int fd);
-void clienterror(int fd, char* method, char* msg);
-void read_requesthdrs(rio_t *rp);
-void parse_req(int clientfd, char* buf, char* uri, char* host, char* port);
-int parse_url(char* url, char* uri, char* port);
-void forwardRequest(int clientfd, char* req_hdr, char* host, char* port);
+void clienterror(int fd, char* cause, char* msg);
+void parse_req(int clientfd, char* req_line, char* method, char* uri, char* host, char* port);
+int parse_url(char* url, char* host, char* port, char* uri);
+void forwardRequest(int clientfd, char* method, char* uri, char* host, char* port);
+void forwardResponse(int serverfd, int clientfd);
+void* pthread_routine(void *vargp);
 
 int main(int argc, char** argv)
 {
@@ -30,110 +35,164 @@ int main(int argc, char** argv)
         exit(1);
     }
 
+    pthread_t tids[NTHREADS];
+    sbuf_init(&sbuf, SBUFSIZE);
+    // pre-threading
+    for (int i = 0; i < NTHREADS; i++) {
+        Pthread_create(&tids[i], NULL, pthread_routine, NULL);
+    }
+
     listenfd = Open_listenfd(argv[1]);
     while (1) {
         clientlen = sizeof(clientaddr);
-        connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen); //line:netp:tiny:accept
-            Getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, 
-                        port, MAXLINE, 0);
-            printf("Accepted connection from (%s, %s)\n", hostname, port);
-        handleHTTPreq(connfd);
-        Close(listenfd);
+        connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen); // to client
+        sbuf_insert(&sbuf, connfd);
+        Getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, 
+                    port, MAXLINE, 0);
+        printf("Accepted connection from (%s, %s)\n", hostname, port);
     }
     return 0;
 }
 
+void* pthread_routine(void* vargp) {
+    Pthread_detach(pthread_self());
+    while (1) {
+        int connfd = sbuf_remove(&sbuf);
+        handleHTTPreq(connfd);
+        Close(connfd);
+    }
+}
+
 void handleHTTPreq(int fd) {
-    char buf[MAXLINE], uri[MAXLINE], host[MAXLINE], port[MAXLINE]; 
-    port[0] = '8'; // default port number
-    port[1] = '0';
+    char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], host[MAXLINE], port[MAXLINE];
+    char req_line[MAXLINE];
     rio_t rio;
 
     /* Read request line and headers */
     Rio_readinitb(&rio, fd);
-    if (!Rio_readlineb(&rio, buf, MAXLINE))  //line:netp:doit:readrequest
+    if (!Rio_readlineb(&rio, buf, MAXLINE))
         return;
-    while(strcmp(buf, "\r\n")) {          //line:netp:readhdrs:checkterm
-        Rio_readlineb(&rio, buf, MAXLINE);
-    }
     printf("%s", buf);
 
-    parse_req(fd, buf, uri, host, port);
-    int clientfd = Open_clientfd(host, port);
-    forwardRequest(clientfd, buf, host, port);
+    /* Save request line before reading remaining headers */
+    strcpy(req_line, buf);
+
+    /* Read remaining request headers */
+    while(strcmp(buf, "\r\n")) {
+        Rio_readlineb(&rio, buf, MAXLINE);
+        printf("%s", buf);
+    }
+
+    parse_req(fd, req_line, method, uri, host, port);
+
+    int clientfd = Open_clientfd(host, port); // to server
+
+    forwardRequest(clientfd, method, uri, host, port);
+    forwardResponse(clientfd, fd);
+    Close(clientfd);
 }
 
-void clienterror(int fd, char* method, char* msg) 
+void clienterror(int fd, char* cause, char* msg) 
 {
     char buf[MAXLINE];
-    sprintf(buf, "%s %s\n", method, msg);
+    sprintf(buf, "%s %s\r\n", cause, msg);
     Rio_writen(fd, buf, strlen(buf));
 }
 
-void parse_req(int clientfd, char* buf, char* uri, char* host, char* port) {
-    char method[MAXLINE], url[MAXLINE], version[MAXLINE];
-    char* bufp = buf;
-    sscanf(buf, "%s %s %s", method, url, version);       //line:netp:doit:parserequest
-    bufp = strstr(buf, "\r\n");
-    // verify HTTP header
-    if (strcasecmp(method, "GET")) {                     //line:netp:doit:beginrequesterr
+void parse_req(int clientfd, char* req_line, char* method, char* uri, char* host, char* port) {
+    char url[MAXLINE], version[MAXLINE];
+
+    sscanf(req_line, "%s %s %s", method, url, version);
+
+    if (strcasecmp(method, "GET")) {
         clienterror(clientfd, method, "Not implemented");
         return;
-    }                                                    //line:netp:doit:endrequesterr
-    if (!parse_url(url, uri, port)) {
-        clienterror(clientfd, method, "url is not end with slash");
     }
 
-    strcpy(version, "HTTP/1.0");
-    strcpy(buf, strcat(strcat(method, uri), version));
-    // parse fields
-    char* end;
-    bufp = strstr(bufp, "Host: ");
-    end = strstr(bufp, "\r\n");
-    size_t len = end - bufp;
-    memcpy(host, bufp+1, len-1);
-
+    if (!parse_url(url, host, port, uri)) {
+        clienterror(clientfd, method, "Can't parse URL");
+        return;
+    }
 }
-/* parse url, extract uri, return non-zero to indicate that
- * url is end with '/'
- */
-int parse_url(char* url, char* uri, char* port) {
-    char* ptr;
-    ptr = index(url, '/');
+
+int parse_url(char* url, char* host, char* port, char* uri) {
+    char *ptr, *slash, *colon;
+
+    /* Skip "http://" */
+    ptr = strstr(url, "://");
     if (ptr) {
-        strcpy(uri, ptr);
-        char* ptr2 = index(url, ':');
-        if (ptr2) {
-            size_t len = ptr - ptr2;
-            memcpy(port, ptr2, len);
-        }
-        return 0;
+        ptr += 3;
     } else {
-        return 1;
+        ptr = url;
     }
 
-}
+    slash = strchr(ptr, '/');
+    colon = strchr(ptr, ':');
 
-void forwardRequest(int clientfd, char* req_hdr, char* host, char* port) {
-    char buf[MAXLINE];
-    rio_t rio;
-    char* cur = buf;
-    char* nextl = NULL;
-    while ((nextl = strstr(req_hdr, "\r\n")) != NULL) {
-        size_t len = nextl - cur;
-        Rio_writen(clientfd, buf, len);
-        cur = nextl+2;
+    if (colon && (!slash || colon < slash)) {
+        /* Port is specified */
+        size_t hostlen = colon - ptr;
+        memcpy(host, ptr, hostlen);
+        host[hostlen] = '\0';
+
+        if (slash) {
+            size_t portlen = slash - colon - 1;
+            memcpy(port, colon + 1, portlen);
+            port[portlen] = '\0';
+        } else {
+            strcpy(port, colon + 1);
+        }
+    } else {
+        /* No port specified, use default 80 */
+        strcpy(port, "80");
+        if (slash) {
+            size_t hostlen = slash - ptr;
+            memcpy(host, ptr, hostlen);
+            host[hostlen] = '\0';
+        } else {
+            strcpy(host, ptr);
+        }
     }
-    Rio_writen(clientfd, user_agent_hdr, strlen(user_agent_hdr));
-    char* conn_hdr = "Connection: close";
-    Rio_writen(clientfd, conn_hdr, strlen(conn_hdr));
-    char* pconn_hdr = "Proxy-Connection: close";
-    Rio_writen(clientfd, pconn_hdr, strlen(pconn_hdr));
+
+    if (slash) {
+        strcpy(uri, slash);
+    } else {
+        strcpy(uri, "/");
+    }
+
+    return 1;
 }
 
-void forwardResponse(int connfd) {
+void forwardRequest(int clientfd, char* method, char* uri, char* host, char* port) {
+    char buf[MAXLINE];
+
+    /* Write request line */
+    sprintf(buf, "%s %s HTTP/1.0\r\n", method, uri);
+    Rio_writen(clientfd, buf, strlen(buf));
+
+    /* Write Host header */
+    sprintf(buf, "Host: %s:%s\r\n", host, port);
+    Rio_writen(clientfd, buf, strlen(buf));
+
+    Rio_writen(clientfd, (void*)user_agent_hdr, strlen(user_agent_hdr));
+
+    sprintf(buf, "Connection: close\r\n");
+    Rio_writen(clientfd, buf, strlen(buf));
+
+    sprintf(buf, "Proxy-Connection: close\r\n\r\n");
+    Rio_writen(clientfd, buf, strlen(buf));
+}
+
+/* 注意fd命名语义与常用的有所不同
+ * 是作为中间人根据对那方开的fd来命名的，而不是作为什么身份开的fd来命名的 
+ */
+void forwardResponse(int serverfd, int clientfd) {
     char buf[MAXLINE];
     rio_t rio;
-    while (!Rio_readlineb(&rio, buf, MAXLINE));
-    Rio_writen(connfd, buf, strlen(buf));
+    size_t n;
+
+    Rio_readinitb(&rio, serverfd);
+    while ((n = Rio_readlineb(&rio, buf, MAXLINE)) > 0) {
+        Rio_writen(clientfd, buf, n);
+    }
 }
